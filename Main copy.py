@@ -10,7 +10,7 @@ import transformer.Constants as Constants
 import Utils
 
 from preprocess.Dataset import get_dataloader
-from transformer.Models import Transformer
+from Implementation import Transformer
 from tqdm import tqdm
 
 
@@ -205,6 +205,7 @@ def main(opt):
 
     # default device is CUDA
     opt.device = torch.device("cuda:0")
+    # opt.device = torch.device("cpu")
 
     # setup the log file
     with open(opt.log, "w") as f:
@@ -217,15 +218,11 @@ def main(opt):
 
     """ prepare model """
     model = Transformer(
-        num_types=num_types,
-        d_model=opt.d_model,
-        d_rnn=opt.d_rnn,
-        d_inner=opt.d_inner_hid,
-        n_layers=opt.n_layers,
-        n_head=opt.n_head,
-        d_k=opt.d_k,
-        d_v=opt.d_v,
-        dropout=opt.dropout,
+        B=opt.batch_size,
+        D=num_types,
+        embed_dim=opt.d_model,
+        num_attention=opt.n_head,
+        device=opt.device,
     )
     model.to(opt.device)
 
@@ -255,6 +252,10 @@ def main(opt):
 
 
 if __name__ == "__main__":
+    import os
+
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-data", default="data/data_so/fold1/")

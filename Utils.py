@@ -41,8 +41,9 @@ def compute_integral_unbiased(model, data, time, non_pad_mask, type_mask):
     num_samples = 100
 
     diff_time = (time[:, 1:] - time[:, :-1]) * non_pad_mask[:, 1:]
-    temp_time = diff_time.unsqueeze(2) * \
-                torch.rand([*diff_time.size(), num_samples], device=data.device)
+    temp_time = diff_time.unsqueeze(2) * torch.rand(
+        [*diff_time.size(), num_samples], device=data.device
+    )
     temp_time /= (time[:, :-1] + 1).unsqueeze(2)
 
     temp_hid = model.linear(data)[:, 1:, :]
@@ -64,7 +65,7 @@ def log_likelihood(model, data, time, types):
     for i in range(model.num_types):
         type_mask[:, :, i] = (types == i + 1).bool().to(data.device)
 
-    all_hid = model.linear(data)
+    all_hid = model.linear(data)  # history + base
     all_lambda = softplus(all_hid, model.beta)
     type_lambda = torch.sum(all_lambda * type_mask, dim=2)
 

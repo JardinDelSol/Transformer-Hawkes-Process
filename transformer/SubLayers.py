@@ -28,7 +28,9 @@ class MultiHeadAttention(nn.Module):
         self.fc = nn.Linear(d_v * n_head, d_model)
         nn.init.xavier_uniform_(self.fc.weight)
 
-        self.attention = ScaledDotProductAttention(temperature=d_k ** 0.5, attn_dropout=dropout)
+        self.attention = ScaledDotProductAttention(
+            temperature=d_k ** 0.5, attn_dropout=dropout
+        )
 
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
@@ -53,12 +55,12 @@ class MultiHeadAttention(nn.Module):
         if mask is not None:
             mask = mask.unsqueeze(1)  # For head axis broadcasting.
 
-        output, attn = self.attention(q, k, v, mask=mask)
+        output, attn = self.attention(q, k, v, mask=mask)  # S, attn
 
         # Transpose to move the head dimension back: b x lq x n x dv
         # Combine the last two dimensions to concatenate all the heads together: b x lq x (n*dv)
         output = output.transpose(1, 2).contiguous().view(sz_b, len_q, -1)
-        output = self.dropout(self.fc(output))
+        output = self.dropout(self.fc(output))  # Aggregation
         output += residual
 
         if not self.normalize_before:
@@ -81,11 +83,11 @@ class PositionwiseFeedForward(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        residual = x
+        residual = x  # S
         if self.normalize_before:
             x = self.layer_norm(x)
 
-        x = F.gelu(self.w_1(x))
+        x = F.gelu(self.w_1(x))  # instead of ReLU
         x = self.dropout(x)
         x = self.w_2(x)
         x = self.dropout(x)

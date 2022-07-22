@@ -12,7 +12,7 @@ def get_non_pad_mask(seq):
     """ Get the non-padding positions. """
 
     assert seq.dim() == 2
-    return seq.ne(Constants.PAD).type(torch.float).unsqueeze(-1)
+    return seq.ne(Constants.PAD).type(torch.float).unsqueeze(-1)  # seq!=0
 
 
 def get_attn_key_pad_mask(seq_k, seq_q):
@@ -30,7 +30,8 @@ def get_subsequent_mask(seq):
 
     sz_b, len_s = seq.size()
     subsequent_mask = torch.triu(
-        torch.ones((len_s, len_s), device=seq.device, dtype=torch.uint8), diagonal=1)
+        torch.ones((len_s, len_s), device=seq.device, dtype=torch.uint8), diagonal=1
+    )  # TxT upper triangle
     subsequent_mask = subsequent_mask.unsqueeze(0).expand(sz_b, -1, -1)  # b x ls x ls
     return subsequent_mask
 
@@ -39,9 +40,8 @@ class Encoder(nn.Module):
     """ A encoder model with self attention mechanism. """
 
     def __init__(
-            self,
-            num_types, d_model, d_inner,
-            n_layers, n_head, d_k, d_v, dropout):
+        self, num_types, d_model, d_inner, n_layers, n_head, d_k, d_v, dropout
+    ):
         super().__init__()
 
         self.d_model = d_model
@@ -49,14 +49,26 @@ class Encoder(nn.Module):
         # position vector, used for temporal encoding
         self.position_vec = torch.tensor(
             [math.pow(10000.0, 2.0 * (i // 2) / d_model) for i in range(d_model)],
-            device=torch.device('cuda'))
+            device=torch.device("cuda"),
+        )
 
         # event type embedding
         self.event_emb = nn.Embedding(num_types + 1, d_model, padding_idx=Constants.PAD)
 
-        self.layer_stack = nn.ModuleList([
-            EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout, normalize_before=False)
-            for _ in range(n_layers)])
+        self.layer_stack = nn.ModuleList(
+            [
+                EncoderLayer(
+                    d_model,
+                    d_inner,
+                    n_head,
+                    d_k,
+                    d_v,
+                    dropout=dropout,
+                    normalize_before=False,
+                )
+                for _ in range(n_layers)
+            ]
+        )
 
     def temporal_enc(self, time, non_pad_mask):
         """
@@ -74,21 +86,22 @@ class Encoder(nn.Module):
 
         # prepare attention masks
         # slf_attn_mask is where we cannot look, i.e., the future and the padding
-        slf_attn_mask_subseq = get_subsequent_mask(event_type)
-        slf_attn_mask_keypad = get_attn_key_pad_mask(seq_k=event_type, seq_q=event_type)
+        slf_attn_mask_subseq = get_subsequent_mask(event_type)  # B, T, T
+        slf_attn_mask_keypad = get_attn_key_pad_mask(
+            seq_k=event_type, seq_q=event_type
+        )  # B, T, T
         slf_attn_mask_keypad = slf_attn_mask_keypad.type_as(slf_attn_mask_subseq)
         slf_attn_mask = (slf_attn_mask_keypad + slf_attn_mask_subseq).gt(0)
 
-        tem_enc = self.temporal_enc(event_time, non_pad_mask)
-        enc_output = self.event_emb(event_type)
+        tem_enc = self.temporal_enc(event_time, non_pad_mask)  # Z
+        enc_output = self.event_emb(event_type)  # UY
 
         for enc_layer in self.layer_stack:
             enc_output += tem_enc
             enc_output, _ = enc_layer(
-                enc_output,
-                non_pad_mask=non_pad_mask,
-                slf_attn_mask=slf_attn_mask)
-        return enc_output
+                enc_output, non_pad_mask=non_pad_mask, slf_attn_mask=slf_attn_mask
+            )
+        return enc_output  # H
 
 
 class Predictor(nn.Module):
@@ -121,7 +134,8 @@ class RNN_layers(nn.Module):
     def forward(self, data, non_pad_mask):
         lengths = non_pad_mask.squeeze(2).long().sum(1).cpu()
         pack_enc_output = nn.utils.rnn.pack_padded_sequence(
-            data, lengths, batch_first=True, enforce_sorted=False)
+            data, lengths, batch_first=True, enforce_sorted=False
+        )
         temp = self.rnn(pack_enc_output)[0]
         out = nn.utils.rnn.pad_packed_sequence(temp, batch_first=True)[0]
 
@@ -133,9 +147,17 @@ class Transformer(nn.Module):
     """ A sequence to sequence model with attention mechanism. """
 
     def __init__(
-            self,
-            num_types, d_model=256, d_rnn=128, d_inner=1024,
-            n_layers=4, n_head=4, d_k=64, d_v=64, dropout=0.1):
+        self,
+        num_types,
+        d_model=256,
+        d_rnn=128,
+        d_inner=1024,
+        n_layers=4,
+        n_head=4,
+        d_k=64,
+        d_v=64,
+        dropout=0.1,
+    ):
         super().__init__()
 
         self.encoder = Encoder(
@@ -182,7 +204,7 @@ class Transformer(nn.Module):
 
         non_pad_mask = get_non_pad_mask(event_type)
 
-        enc_output = self.encoder(event_type, event_time, non_pad_mask)
+        enc_output = self.encoder(event_type, event_time, non_pad_mask)  # H
         enc_output = self.rnn(enc_output, non_pad_mask)
 
         time_prediction = self.time_predictor(enc_output, non_pad_mask)
